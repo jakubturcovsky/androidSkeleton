@@ -1,0 +1,164 @@
+// Main build script for Example
+//
+// Usage: gradlew assembleDebug           Build debug APK
+//        gradlew assembleRelease         Build production APK
+//        gradlew connectedAndroidTest    Unit testing
+//        gradle wrapper                  Create Gradle Wrapper
+
+apply plugin: 'com.android.application'
+apply plugin: 'signing'
+
+android {
+    compileSdkVersion project.ext.compileSdkVersion
+    buildToolsVersion project.ext.buildToolsVersion
+
+    defaultConfig {
+        applicationId project.ext.applicationId
+        minSdkVersion project.ext.minSdkVersion
+        targetSdkVersion project.ext.targetSdkVersion
+        versionCode project.ext.versionCode
+        versionName project.ext.versionName
+    }
+
+    // Rename assembled .apk file
+    applicationVariants.all { variant ->
+//        if (variant.buildType.name.equals("release")) {
+            variant.outputs.each { output ->
+                def outputFile = output.outputFile
+                if (outputFile != null && outputFile.name.endsWith('.apk')) {
+                    def fileName = outputFile.name.replace(".apk", "-" + project.ext.versionName + "-" + project.ext.versionCode + ".apk")
+                    output.outputFile = new File((String) outputFile.parent, (String) fileName)
+                }
+            }
+//        }
+    }
+
+    // Set path to JNI libs
+    sourceSets.main {
+        jniLibs.srcDirs = ['src/main/libs']
+        jni.srcDirs = [] //disable automatic ndk-build
+    }
+
+    packagingOptions {
+        exclude 'META-INF/DEPENDENCIES.txt'
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/notice.txt'
+        exclude 'META-INF/license.txt'
+        exclude 'META-INF/dependencies.txt'
+        exclude 'META-INF/LGPL2.1'
+    }
+
+    signingConfigs {
+        release {
+            // passwords and alias are obtained via askForPasswords task
+            storeFile file("../${project.property('keystore.file')}")
+            storePassword ""
+            keyAlias ""
+            keyPassword ""
+        }
+    }
+
+    buildTypes {
+        def BOOLEAN = "boolean"
+        def TRUE = "true"
+        def FALSE = "false"
+        def LOG_HTTP_REQUESTS = "LOG_HTTP_REQUESTS"
+        def REPORT_CRASHES = "REPORT_CRASHES"
+        def ENABLE_VIEW_SERVER = "ENABLE_VIEW_SERVER"
+        def ENABLE_SHARING = "ENABLE_SHARING"
+        def DEBUG_IMAGES = "DEBUG_IMAGES"
+
+        debug {
+            signingConfig signingConfigs.debug
+
+            /*
+                Custom fields
+                Example usage:
+                if (BuildConfig.REPORT_CRASHES) {
+                    Crashlytics.start(this);
+                }
+             */
+            buildConfigField BOOLEAN, REPORT_CRASHES, FALSE
+            buildConfigField BOOLEAN, LOG_HTTP_REQUESTS, TRUE
+
+            versionNameSuffix "-debug"
+
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro', 'proguard-debug.pro'
+        }
+        client {
+            signingConfig signingConfigs.debug
+
+            buildConfigField BOOLEAN, LOG_HTTP_REQUESTS, TRUE
+            buildConfigField BOOLEAN, REPORT_CRASHES, TRUE
+
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro', 'proguard-debug.pro'
+        }
+        release {
+            signingConfig signingConfigs.release
+
+            buildConfigField BOOLEAN, REPORT_CRASHES, TRUE
+            buildConfigField BOOLEAN, LOG_HTTP_REQUESTS, FALSE
+
+            // http://developer.android.com/tools/help/zipalign.html
+            zipAlignEnabled true        // Less RAM consumed when running the application.
+            minifyEnabled true      // Turns on ProGuard and removes unused code
+            shrinkResources true
+            // Removes unused imports, be sure that ProGuard is working before turning this on
+
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'proguard-release.pro'
+        }
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    wearApp project(':wear')
+    testCompile 'junit:junit:4.12'
+    compile 'com.android.support:support-v4:' + project.ext.supportVersion
+    compile 'com.android.support:appcompat-v7:' + project.ext.supportVersion
+    compile 'com.google.android.gms:play-services:' + project.ext.playServicesVersion
+    compile 'com.android.support:design:23.0.1'
+}
+
+/**
+ * Gives two options how to input keystore secret information:
+ * 1. Fill the keystore.properties (path defined in Project's gradle.properties)
+ * 2. Input secrets to the console
+ */
+task askForPasswords << {
+    def storePass
+    def keyAlias
+    def keyPass
+
+    def keystorePropertiesFile = new File((String) project.property("keystore.properties"))
+
+    if (project.hasProperty("keystore.properties") && keystorePropertiesFile.exists()) {
+        println "Loading keystore passwords from property file..."
+        Properties properties = new Properties()
+        properties.load(new FileInputStream(keystorePropertiesFile))
+        storePass = properties['keystore.store.password']
+        keyAlias = properties['keystore.key.alias']
+        keyPass = properties['keystore.key.password']
+    } else {
+        println "Getting keystore passwords from user input..."
+        storePass = new String(System.console().readPassword("\nStore password: "))
+        keyAlias = new String(System.console().readLine("Key alias: "))
+        keyPass = new String(System.console().readPassword("Key password: "))
+    }
+
+    android.signingConfigs.release.storePassword = storePass
+    android.signingConfigs.release.keyAlias = keyAlias
+    android.signingConfigs.release.keyPassword = keyPass
+}
+
+
+tasks.whenTaskAdded {
+    theTask ->
+        if (theTask.name.equals("packageRelease")) {
+            theTask.dependsOn "askForPasswords"
+        }
+}
