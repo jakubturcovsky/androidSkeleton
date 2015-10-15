@@ -6,7 +6,7 @@
 //        gradle wrapper                  Create Gradle Wrapper
 
 apply plugin: 'com.android.application'
-apply plugin: 'signing'
+apply plugin: 'signing'     // TODO Does it have to be here?
 
 android {
     compileSdkVersion project.ext.compileSdkVersion
